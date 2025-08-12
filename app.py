@@ -3,10 +3,8 @@ import pickle
 import pandas as pd
 import requests
 import base64
-from dotenv import load_dotenv
 import os
 import gzip
-
 
 # Convert image to base64
 def get_base64(image_file):
@@ -53,7 +51,6 @@ def set_bg(image_file):
         color: white !important;
     }}
 
-    /* Fixing Selectbox, Button, and Input */
     .stSelectbox div div {{
         font-size: 18px !important;
         font-weight: 400 !important;
@@ -88,90 +85,72 @@ def set_bg(image_file):
 # Call the function with your image file
 set_bg("banner.jpg")  # Ensure banner.jpg exists in the correct directory
 
-
-# OMDb API Key (replace with your key)
-load_dotenv()
-OMDB_API_KEY = os.getenv("OMDB_API_KEY")
-
+# Hardcoded OMDb API Key
+OMDB_API_KEY = "17e4681b"
 
 def fetch_movie_details(movie_title):
     """Fetch movie details (poster & IMDb rating) from OMDb API."""
-
     if not OMDB_API_KEY:
-        print("Error: OMDB API Key is missing! Set it in an environment variable.")
         return "https://via.placeholder.com/500x750?text=No+Image", "N/A"
 
-    movie_title = movie_title.replace(" ", "+")  # Replace spaces with '+'
+    movie_title = movie_title.replace(" ", "+")
     url = f"http://www.omdbapi.com/?t={movie_title}&apikey={OMDB_API_KEY}"
 
     try:
-        response = requests.get(url, timeout=10)  # Set timeout to avoid long waits
-        response.raise_for_status()  # Raise exception for HTTP errors
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
         data = response.json()
 
-        if data.get("Response") == "True":  # Check if API response is valid
+        if data.get("Response") == "True":
             poster_url = data.get("Poster")
             rating = data.get("imdbRating", "N/A")
-
-            # Handle missing poster URLs (sometimes OMDb returns "N/A")
             if not poster_url or poster_url == "N/A":
                 poster_url = "https://via.placeholder.com/500x750?text=No+Image"
-
             return poster_url, rating
-        else:
-            print(f"OMDb API Error: {data.get('Error')}")
-
-    except requests.exceptions.RequestException as e:
-        print(f"Request failed: {e}")
+    except requests.exceptions.RequestException:
+        pass
 
     return "https://via.placeholder.com/500x750?text=No+Image", "N/A"
 
-
-# Recommendation function
 def recommend(movie):
+    """Recommend similar movies sorted by IMDb rating."""
     movie_index = movies[movies['title'] == movie].index[0]
     distances = similarity[movie_index]
     movie_list = sorted(list(enumerate(distances)), reverse=True, key=lambda x: x[1])[1:9]
 
-    recommended_movies = []
-    recommended_posters = []
-
+    recommendations = []
     for i in movie_list:
         title = movies.iloc[i[0]]['title']
-        poster, rating = fetch_movie_details(title)  # Get poster & rating from OMDb
-        recommended_movies.append((title, rating))
-        recommended_posters.append(poster)
+        poster, rating = fetch_movie_details(title)
+        try:
+            rating_val = float(rating) if rating != "N/A" else 0
+        except ValueError:
+            rating_val = 0
+        recommendations.append((title, poster, rating_val))
 
-    # Sort by IMDb rating
-    recommended_movies.sort(key=lambda x: x[1], reverse=True)
-
-    return recommended_movies, recommended_posters
-
+    recommendations.sort(key=lambda x: x[2], reverse=True)
+    return recommendations
 
 # Load Data
 movies_dict = pickle.load(open('movie_dict.pkl', 'rb'))
 movies = pd.DataFrame(movies_dict)
 similarity = pickle.load(open('similarity.pkl', 'rb'))
 
-
-
 # Streamlit UI
 st.title('🎬 Movie Recommender System')
 st.subheader("Get movie recommendations based on your favorite film! 🍿")
 
-# Dropdown for selecting a movie
-selected_movie_name = st.selectbox(
-    "Select a Movie:", movies['title'].values
-)
+selected_movie_name = st.selectbox("Select a Movie:", movies['title'].values)
 
-# Recommendation Button
 if st.button("Recommend"):
-    recommendations, posters = recommend(selected_movie_name)
-
+    recommendations = recommend(selected_movie_name)
     st.markdown("### Recommended Movies 🎥")
-
-    cols = st.columns(4)  # Display 4 movies per row
-    for idx, (movie, rating) in enumerate(recommendations):
-        with cols[idx % 4]:  # Arrange movies in a row
-            st.image(posters[idx], width=150)
+    cols = st.columns(4)
+    for idx, (movie, poster, rating) in enumerate(recommendations):
+        with cols[idx % 4]:
+            st.image(poster, width=150)
             st.markdown(f"**{movie}**  \n⭐ {rating}/10", unsafe_allow_html=True)
+
+
+   
+
